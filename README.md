@@ -4,7 +4,7 @@ PDF Extraction API is a simple API built on top of the Marker PDF library. It al
 
 ## Installation
 
-1. Clone the repository: `git clone [REPOSITORY_URL]`
+1. Clone the repository: `git clone https://github.com/satish860/PDF-Extraction-API.git`
 2. Install the required dependencies: `pip install modal marker-pdf hf_transfer opencv-python-headless pillow`
 
 ## Usage
