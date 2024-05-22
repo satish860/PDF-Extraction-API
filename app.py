@@ -71,6 +71,7 @@ class Model:
         from marker.settings import settings
         import cv2
         import torch
+        import io
 
         start = time.monotonic_ns()
 
@@ -79,6 +80,12 @@ class Model:
         settings.INFERENCE_RAM = 80
         settings.VRAM_PER_TASK = 16
         full_text, images, out_meta = convert_single_pdf(pdf_bytes, self.model_list, batch_multiplier=5)
+        base64_images = {}
+        for image_name, image in images.items():
+            buffered = io.BytesIO()
+            image.save(buffered, format="PNG")
+            base64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            base64_images[image_name] = base64_img
 
         duration_s = (time.monotonic_ns() - start) / 1e9
         print(f"🏎️ engine started in {duration_s:.0f}s")
@@ -87,7 +94,8 @@ class Model:
 
 @app.local_entrypoint()
 def main():
-    model = Model()
+    cls = modal.Cls.lookup("marker-api", "Model")
+    model = cls()
     pdf_url = "https://pub-cc8438e664ef4d32a54c800c7c408282.r2.dev/73256500180.pdf"
     
     # Download the PDF and get the bytes
@@ -97,23 +105,10 @@ def main():
         print("Failed to download the PDF. Exiting.")
         return
     
-    markdown_text, images, out_meta = model.parse_pdf_and_return_markdown.remote(pdf_bytes, True)
-    print(f"Count of Images {len(images)}")
-    output_file = "parsed_content.md"
-    with open(output_file, "w", encoding="utf-8") as file:
-        file.write(markdown_text)
-    image_data = {}
-    for i, (filename, image) in enumerate(images.items()):
-        image_filepath = f"image_{i+1}.png"
-        image.save(image_filepath, "PNG")
-
-        with open(image_filepath, "rb") as f:
-            image_bytes = f.read()
-
-        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-        image_data[f'image_{i+1}'] = image_base64
-
-    print(f"Parsed content saved to {output_file}")
+    fn_call = model.parse_pdf_and_return_markdown.spawn(pdf_bytes, True)
+    print(fn_call.object_id)
+    return {"object_id":fn_call.object_id}
+   
     
 
 class ConvertRequest(BaseModel):
@@ -124,15 +119,11 @@ class ConvertRequest(BaseModel):
 def convert(req: ConvertRequest):
     import io
     import base64
-
-    model = Model()
+    cls = modal.Cls.lookup("marker-api", "Model")
+    model = cls()
     pdf_bytes = base64.b64decode(req.pdf_chunk)
-    markdown_text, images, out_meta = model.parse_pdf_and_return_markdown.remote(pdf_bytes, True)
-    base64_images = {}
-    for image_name, image in images.items():
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        base64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        base64_images[image_name] = base64_img
-    print(f"Count of Images {len(images)}")
-    return {"markdown": markdown_text, "images": base64_images, "metadata": out_meta}
+    fn_call = model.parse_pdf_and_return_markdown.spawn(pdf_bytes, True)
+    return {"object_id":fn_call.object_id}
+    
+    # print(f"Count of Images {len(images)}")
+    # return {"markdown": markdown_text, "images": base64_images, "metadata": out_meta}
